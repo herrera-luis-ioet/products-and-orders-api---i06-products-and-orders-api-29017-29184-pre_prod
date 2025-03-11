@@ -136,6 +136,20 @@ class CRUDProduct(CRUDBase[Product, ProductCreate, ProductUpdate]):
         result = await db.execute(query)
         return result.scalars().all()
 
+    # PUBLIC_INTERFACE
+    async def remove(self, db: AsyncSession, *, id: int) -> Optional[Product]:
+        """
+        Remove a product by ID.
+        
+        Args:
+            db: Database session
+            id: Product ID
+            
+        Returns:
+            The removed product if found, None otherwise
+        """
+        return await self.delete(db, id=id)
+
 
 # Create an instance of the CRUD class for products
 product = CRUDProduct(Product)
