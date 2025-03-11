@@ -3,6 +3,12 @@ Pytest configuration and fixtures.
 
 This module provides fixtures for testing the application, including
 database fixtures, API client fixtures, and test data fixtures.
+
+The database initialization process:
+1. Create a file-based SQLite database for testing
+2. Import all models to ensure they're registered with SQLAlchemy
+3. Create all tables using Base.metadata.create_all
+4. Reset the database between tests to ensure a clean state
 """
 
 import asyncio
@@ -20,24 +26,27 @@ from sqlalchemy.pool import NullPool
 from app import __app_name__, __version__
 from app.api.v1.api import api_router
 from app.config import Settings, settings
-from app.database import Base, get_db
+from app.database import Base, get_db, init_db
+# Explicitly import all models to ensure they're registered with SQLAlchemy
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.product import Product
 
 
-# Test settings with in-memory SQLite database
+# Test settings with file-based SQLite database for testing
 @pytest.fixture(scope="session")
 def test_settings() -> Settings:
     """
-    Create test settings with in-memory SQLite database.
+    Create test settings with file-based SQLite database for testing.
     
     Returns:
         Settings: Test settings
     """
+    # Use a file-based SQLite database for testing
+    # This ensures that the database persists across connections
     return Settings(
         ENV="testing",
         DEBUG=True,
-        DATABASE_URL="sqlite+aiosqlite:///:memory:",
+        DATABASE_URL="sqlite+aiosqlite:///./test.db",
         SECRET_KEY="test_secret_key",
         PAGINATION_PAGE_SIZE=10,
     )
@@ -66,12 +75,21 @@ async def engine():
     Returns:
         AsyncEngine: SQLAlchemy async engine
     """
+    # Remove test.db if it exists
+    if os.path.exists("./test.db"):
+        os.remove("./test.db")
+    
+    # Create engine with the test database URL
     engine = create_async_engine(
         settings.DATABASE_URL,
         echo=False,
         future=True,
         poolclass=NullPool,
     )
+    
+    # Import all models to ensure they're registered with SQLAlchemy
+    from app.models.product import Product
+    from app.models.order import Order, OrderItem
     
     # Create tables
     async with engine.begin() as conn:
@@ -83,17 +101,46 @@ async def engine():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     
+    # Remove test.db
+    if os.path.exists("./test.db"):
+        os.remove("./test.db")
+    
     await engine.dispose()
+
+
+# Reset database tables between tests
+@pytest_asyncio.fixture(scope="function")
+async def reset_db(engine):
+    """
+    Reset database tables between tests.
+    
+    This fixture ensures that each test starts with a clean database.
+    
+    Args:
+        engine: SQLAlchemy async engine
+    """
+    # Drop all tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    
+    # Import all models to ensure they're registered with SQLAlchemy
+    from app.models.product import Product
+    from app.models.order import Order, OrderItem
+    
+    # Create all tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 
 # Create async session for tests
 @pytest_asyncio.fixture(scope="function")
-async def db_session(engine) -> AsyncGenerator[AsyncSession, None]:
+async def db_session(engine, reset_db) -> AsyncGenerator[AsyncSession, None]:
     """
     Create async session for tests.
     
     Args:
         engine: SQLAlchemy async engine
+        reset_db: Reset database fixture
         
     Yields:
         AsyncSession: SQLAlchemy async session
