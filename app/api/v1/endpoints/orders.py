@@ -56,6 +56,10 @@ async def list_orders(
             orders = await order_crud.get_by_status(db, status=status, skip=skip, limit=limit)
         else:
             orders = await order_crud.get_multi(db, skip=skip, limit=limit)
+            
+        # For OrderSummary response model, we don't need to refresh relationships
+        # as it only includes basic order fields, not items
+        
         return orders
     except OrderValidationError as e:
         # Re-raise the exception to be caught by the global exception handler
@@ -90,6 +94,16 @@ async def get_order(
     try:
         # The custom exceptions will be caught by the global exception handlers in app.errors
         order = await order_crud.get_with_items(db, id=order_id)
+        
+        # Explicitly refresh the order with its items to ensure they remain attached to the session
+        # This prevents DetachedInstanceError when the response is serialized
+        await db.refresh(order, ["items"])
+        
+        # For each order item, ensure the product relationship is loaded
+        for item in order.items:
+            if hasattr(item, "product") and item.product is None:
+                await db.refresh(item, ["product"])
+                
         return order
     except OrderValidationError as e:
         # Check if this is a "not found" error and return 404
@@ -133,6 +147,16 @@ async def create_order(
     try:
         # The custom exceptions will be caught by the global exception handlers in app.errors
         order = await order_crud.create_with_items(db, obj_in=order_in)
+        
+        # Explicitly refresh the order with its items to ensure they remain attached to the session
+        # This prevents DetachedInstanceError when the response is serialized
+        await db.refresh(order, ["items"])
+        
+        # For each order item, ensure the product relationship is loaded
+        for item in order.items:
+            if hasattr(item, "product") and item.product is None:
+                await db.refresh(item, ["product"])
+                
         return order
     except ProductValidationError as e:
         # Check if this is a "product not found" error and return 404
@@ -180,7 +204,18 @@ async def update_order(
         order = await order_crud.get(db, id=order_id)
         updated_order = await order_crud.update(db, db_obj=order, obj_in=order_in)
         # Get the order with items to return in the response
-        return await order_crud.get_with_items(db, id=order_id)
+        order = await order_crud.get_with_items(db, id=order_id)
+        
+        # Explicitly refresh the order with its items to ensure they remain attached to the session
+        # This prevents DetachedInstanceError when the response is serialized
+        await db.refresh(order, ["items"])
+        
+        # For each order item, ensure the product relationship is loaded
+        for item in order.items:
+            if hasattr(item, "product") and item.product is None:
+                await db.refresh(item, ["product"])
+                
+        return order
     except OrderValidationError as e:
         # Check if this is a "not found" error and return 404
         if e.error_type == "order_not_found":
@@ -284,7 +319,18 @@ async def update_order_status(
         # The custom exceptions will be caught by the global exception handlers in app.errors
         updated_order = await order_crud.update_status(db, id=order_id, status=status_enum)
         # Get the order with items to return in the response
-        return await order_crud.get_with_items(db, id=order_id)
+        order = await order_crud.get_with_items(db, id=order_id)
+        
+        # Explicitly refresh the order with its items to ensure they remain attached to the session
+        # This prevents DetachedInstanceError when the response is serialized
+        await db.refresh(order, ["items"])
+        
+        # For each order item, ensure the product relationship is loaded
+        for item in order.items:
+            if hasattr(item, "product") and item.product is None:
+                await db.refresh(item, ["product"])
+                
+        return order
     except OrderValidationError as e:
         # Check if this is a "not found" error and return 404
         if e.error_type == "order_not_found":
@@ -326,6 +372,16 @@ async def get_orders_by_customer_email(
     """
     try:
         orders = await order_crud.get_by_customer_email(db, email=customer_email, skip=skip, limit=limit)
+        
+        # Ensure all orders and their items are properly attached to the session
+        for order in orders:
+            await db.refresh(order, ["items"])
+            
+            # For each order item, ensure the product relationship is loaded
+            for item in order.items:
+                if hasattr(item, "product") and item.product is None:
+                    await db.refresh(item, ["product"])
+        
         return orders
     except OrderValidationError as e:
         # Check if this is a specific error type that should be handled differently
