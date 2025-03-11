@@ -157,7 +157,7 @@ async def create_order(
 
 
 # PUBLIC_INTERFACE
-@router.put("/{order_id}", response_model=OrderStatusResponse)
+@router.put("/{order_id}", response_model=OrderResponse)
 async def update_order(
     order_in: OrderUpdate,
     order_id: int = Path(..., gt=0, description="The ID of the order to update"),
@@ -179,7 +179,8 @@ async def update_order(
         # The custom exceptions will be caught by the global exception handlers in app.errors
         order = await order_crud.get(db, id=order_id)
         updated_order = await order_crud.update(db, db_obj=order, obj_in=order_in)
-        return updated_order
+        # Get the order with items to return in the response
+        return await order_crud.get_with_items(db, id=order_id)
     except OrderValidationError as e:
         # Check if this is a "not found" error and return 404
         if e.error_type == "order_not_found":
@@ -244,7 +245,7 @@ async def delete_order(
 # PUBLIC_INTERFACE
 @router.put("/{order_id}/status", response_model=OrderStatusResponse)
 async def update_order_status(
-    status: OrderStatus = Body(..., description="New order status"),
+    status_update: dict = Body(..., description="New order status", example={"status": "shipped"}),
     order_id: int = Path(..., gt=0, description="The ID of the order to update"),
     db: AsyncSession = Depends(get_db)
 ) -> Any:
@@ -261,9 +262,29 @@ async def update_order_status(
         500: Internal server error
     """
     try:
+        # Extract status from the request body
+        if "status" not in status_update:
+            raise OrderValidationError(
+                detail="Status field is required",
+                error_type="missing_status_field",
+                validation_errors=[{"msg": "Status field is required"}]
+            )
+        
+        # Convert string status to enum
+        try:
+            status_enum = OrderStatus(status_update["status"])
+        except ValueError:
+            valid_statuses = [s.value for s in OrderStatus]
+            raise OrderValidationError(
+                detail=f"Invalid status value. Must be one of: {', '.join(valid_statuses)}",
+                error_type="invalid_status_value",
+                validation_errors=[{"msg": f"Invalid status value. Must be one of: {', '.join(valid_statuses)}"}]
+            )
+        
         # The custom exceptions will be caught by the global exception handlers in app.errors
-        updated_order = await order_crud.update_status(db, id=order_id, status=status)
-        return updated_order
+        updated_order = await order_crud.update_status(db, id=order_id, status=status_enum)
+        # Get the order with items to return in the response
+        return await order_crud.get_with_items(db, id=order_id)
     except OrderValidationError as e:
         # Check if this is a "not found" error and return 404
         if e.error_type == "order_not_found":
@@ -284,7 +305,7 @@ async def update_order_status(
 
 
 # PUBLIC_INTERFACE
-@router.get("/customer/{customer_email}", response_model=List[OrderSummary])
+@router.get("/customer/{customer_email}", response_model=List[OrderResponse])
 async def get_orders_by_customer_email(
     customer_email: str = Path(..., description="Customer email address"),
     db: AsyncSession = Depends(get_db),

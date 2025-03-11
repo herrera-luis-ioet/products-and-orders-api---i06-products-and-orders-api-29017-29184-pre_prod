@@ -196,6 +196,7 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
         """
         query = (
             select(self.model)
+            .options(selectinload(self.model.items))
             .where(self.model.customer_email == email)
             .offset(skip)
             .limit(limit)
