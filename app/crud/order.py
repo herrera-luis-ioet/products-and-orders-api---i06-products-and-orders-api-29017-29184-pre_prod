@@ -93,9 +93,8 @@ class CRUDOrderItem(CRUDBase[OrderItem, OrderItemCreate, Dict[str, Any]]):
                     validation_errors=[{"msg": f"Failed to update inventory for product {obj_in.product_id}"}]
                 )
                 
-            # Commit the transaction after all operations are successful
-            await db.commit()
-            await db.refresh(db_obj)
+            # Flush to persist changes without committing the transaction
+            await db.flush()
             
             return db_obj
             
@@ -325,15 +324,11 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
                 
             # Commit the transaction after all operations are successful
             await db.commit()
-                
-            # Load the order with its items using selectinload
-            query = (
-                select(self.model)
-                .options(selectinload(self.model.items))
-                .where(self.model.id == db_obj.id)
-            )
-            result = await db.execute(query)
-            return result.scalars().first()
+            
+            # Refresh the order with its items
+            await db.refresh(db_obj, ["items"])
+            
+            return db_obj
             
         except (OrderValidationError, ProductValidationError):
             # Re-raise specific validation errors
