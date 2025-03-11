@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, List, Optional, Union
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -167,6 +168,72 @@ class ForbiddenError(APIError):
         )
 
 
+class OrderValidationError(APIError):
+    """
+    Error raised when order validation fails.
+    
+    Attributes:
+        detail: Error detail message
+        code: Error code for client reference
+        product_ids: List of product IDs involved in the validation error
+        error_type: Specific type of validation error
+        validation_errors: Detailed validation error messages
+        headers: Additional headers to include in the response
+    """
+    
+    def __init__(
+        self,
+        detail: str = "Order validation failed",
+        code: str = "order_validation_error",
+        product_ids: Optional[List[int]] = None,
+        error_type: Optional[str] = None,
+        validation_errors: Optional[List[Dict[str, Any]]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ):
+        self.product_ids = product_ids or []
+        self.error_type = error_type or "validation_error"
+        self.validation_errors = validation_errors or []
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=detail,
+            code=code,
+            headers=headers,
+        )
+
+
+class ProductValidationError(APIError):
+    """
+    Error raised when product validation fails.
+    
+    Attributes:
+        detail: Error detail message
+        code: Error code for client reference
+        product_ids: List of product IDs involved in the validation error
+        error_type: Specific type of validation error
+        validation_errors: Detailed validation error messages
+        headers: Additional headers to include in the response
+    """
+    
+    def __init__(
+        self,
+        detail: str = "Product validation failed",
+        code: str = "product_validation_error",
+        product_ids: Optional[List[int]] = None,
+        error_type: Optional[str] = None,
+        validation_errors: Optional[List[Dict[str, Any]]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ):
+        self.product_ids = product_ids or []
+        self.error_type = error_type or "validation_error"
+        self.validation_errors = validation_errors or []
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=detail,
+            code=code,
+            headers=headers,
+        )
+
+
 class ValidationErrorResponse(JSONResponse):
     """
     Custom response for validation errors.
@@ -215,16 +282,29 @@ def setup_exception_handlers(app: FastAPI) -> None:
             f"correlation_id: {correlation_id})"
         )
         
+        # Create base error response
+        error_response = {
+            "code": exc.code,
+            "message": exc.detail,
+            "correlation_id": correlation_id,
+        }
+        
+        # Add additional fields for OrderValidationError
+        if isinstance(exc, OrderValidationError):
+            error_response["product_ids"] = exc.product_ids
+            error_response["error_type"] = exc.error_type
+            error_response["validation_errors"] = exc.validation_errors
+        
+        # Add additional fields for ProductValidationError
+        elif isinstance(exc, ProductValidationError):
+            error_response["product_ids"] = exc.product_ids
+            error_response["error_type"] = exc.error_type
+            error_response["validation_errors"] = exc.validation_errors
+        
         # Return JSON response
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "error": {
-                    "code": exc.code,
-                    "message": exc.detail,
-                    "correlation_id": correlation_id,
-                }
-            },
+            content={"error": jsonable_encoder(error_response)},
             headers=exc.headers,
         )
     
