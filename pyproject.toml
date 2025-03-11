@@ -1,0 +1,57 @@
+[tool.poetry]
+name = "products-and-orders-api"
+version = "0.1.0"
+description = "Product and Order Management Component using FastAPI, SQLAlchemy, and SQLite"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "0.115.0"
+sqlalchemy = "^2.0.28"
+pydantic = "^2.6.1"
+uvicorn = "^0.27.1"
+aiosqlite = "^0.19.0"
+python-dotenv = "^1.0.0"
+alembic = "^1.13.1"
+httpx = "^0.26.0"
+python-multipart = "^0.0.9"
+email-validator = "^2.1.0"
+pyjwt = "^2.8.0"
+passlib = "^1.7.4"
+bcrypt = "^4.1.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-asyncio = "^0.23.5"
+pytest-cov = "^4.1.0"
+black = "^24.1.1"
+flake8 = "^7.0.0"
+isort = "^5.13.2"
+mypy = "^1.8.0"
+pre-commit = "^3.6.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"

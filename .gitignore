@@ -1,12 +1,11 @@
-
-# Python ignorables
-.knowledge/
-logs/
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Distribution / packaging
 build/
 develop-eggs/
 dist/
@@ -22,11 +21,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
-*.manifest
-*.spec
-pip-log.txt
-pip-delete-this-directory.txt
+
+# Unit test / coverage reports
 htmlcov/
 .tox/
 .coverage
@@ -37,23 +33,66 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+pytest-report.html
 
-# Ignore all directories containing pyvenv.cfg
-**/pyvenv.cfg
-**/*/pyvenv.cfg
-
-# Node.js ignorables
-node_modules/
-npm-debug.log
-yarn-error.log
-.pnp/
-.pnp.js
+# Virtual environments
+venv/
+env/
+ENV/
 .env
+.venv
+env.bak/
+venv.bak/
+pythonenv*
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Log files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.development
 .env.test
-.cache/
-.next/
-.nuxt/
-.vuepress/dist
-.serverless/
-.fusebox/
-.dynamodb/
+.env.production
+
+# Poetry
+poetry.lock
+
+# Alembic
+alembic/versions/*.py
+!alembic/versions/__init__.py
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Misc
+.directory
+*.bak
+*.tmp
+*~
+.*.swp
+.*.swo
