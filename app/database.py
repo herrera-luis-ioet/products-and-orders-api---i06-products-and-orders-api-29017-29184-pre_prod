@@ -74,8 +74,8 @@ async def init_db() -> None:
     """
     async with engine.begin() as conn:
         # Import all models here to ensure they are registered with Base
-        # from app.models.product import Product
-        # from app.models.order import Order
+        from app.models.product import Product
+        from app.models.order import Order, OrderItem
         
         # Create all tables
         await conn.run_sync(Base.metadata.create_all)
