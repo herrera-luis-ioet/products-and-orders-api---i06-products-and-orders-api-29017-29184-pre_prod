@@ -321,9 +321,14 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
                 validation_errors=[{"msg": str(e)}]
             )
             
-        # Refresh order to include items
-        await db.refresh(db_obj)
-        return db_obj
+        # Load the order with its items using selectinload instead of simple refresh
+        query = (
+            select(self.model)
+            .options(selectinload(self.model.items))
+            .where(self.model.id == db_obj.id)
+        )
+        result = await db.execute(query)
+        return result.scalars().first()
 
     # PUBLIC_INTERFACE
     async def update_status(
