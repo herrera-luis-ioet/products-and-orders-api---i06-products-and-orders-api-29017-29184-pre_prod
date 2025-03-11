@@ -51,11 +51,26 @@ async def list_orders(
         422: Validation error
         500: Internal server error
     """
+    logger = logging.getLogger(__name__)
+    
     try:
-        if status:
-            orders = await order_crud.get_by_status(db, status=status, skip=skip, limit=limit)
-        else:
-            orders = await order_crud.get_multi(db, skip=skip, limit=limit)
+        try:
+            if status:
+                orders = await order_crud.get_by_status(db, status=status, skip=skip, limit=limit)
+            else:
+                orders = await order_crud.get_multi(db, skip=skip, limit=limit)
+        except Exception as db_error:
+            logger.error(f"Database error while listing orders: {str(db_error)}")
+            raise OrderValidationError(
+                detail=f"Error retrieving orders: {str(db_error)}",
+                error_type="database_error",
+                validation_errors=[{"msg": str(db_error)}]
+            )
+            
+        # Initialize empty list if orders is None to prevent ResponseValidationError
+        if orders is None:
+            logger.warning("No orders found, returning empty list")
+            return []
             
         # For OrderSummary response model, we don't need to refresh relationships
         # as it only includes basic order fields, not items
@@ -66,7 +81,6 @@ async def list_orders(
         raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
-        logger = logging.getLogger(__name__)
         logger.error(f"Error listing orders: {str(e)}")
         raise OrderValidationError(
             detail=f"Error listing orders: {str(e)}",
@@ -91,26 +105,56 @@ async def get_order(
         422: Validation error
         500: Internal server error
     """
+    logger = logging.getLogger(__name__)
+    
     try:
-        # The custom exceptions will be caught by the global exception handlers in app.errors
-        order = await order_crud.get_with_items(db, id=order_id)
-        
-        # Check if order exists before attempting to refresh it
+        # First check if the order exists
+        try:
+            order = await order_crud.get_with_items(db, id=order_id)
+        except OrderValidationError as e:
+            # If order not found, return 404
+            if e.error_type == "order_not_found":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=e.detail
+                )
+            # Re-raise other validation errors
+            raise
+            
+        # Double check if order exists before proceeding
         if not order:
-            raise OrderValidationError(
-                detail=f"Order with ID {order_id} not found",
-                error_type="order_not_found",
-                validation_errors=[{"msg": f"Order with ID {order_id} not found"}]
+            logger.error(f"Order with ID {order_id} not found but no exception was raised")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Order with ID {order_id} not found"
             )
         
-        # Explicitly refresh the order with its items to ensure they remain attached to the session
-        # This prevents DetachedInstanceError when the response is serialized
-        await db.refresh(order, ["items"])
-        
-        # For each order item, ensure the product relationship is loaded
-        for item in order.items:
-            if hasattr(item, "product") and item.product is None:
-                await db.refresh(item, ["product"])
+        try:
+            # Explicitly refresh the order with its items to ensure they remain attached to the session
+            # This prevents DetachedInstanceError when the response is serialized
+            await db.refresh(order, ["items"])
+            
+            # Ensure items is not None to prevent ResponseValidationError
+            if order.items is None:
+                order.items = []
+                logger.warning(f"Order {order_id} has None items, defaulting to empty list")
+            
+            # For each order item, ensure the product relationship is loaded
+            for item in order.items:
+                if item is None:
+                    continue
+                    
+                try:
+                    if hasattr(item, "product"):
+                        if item.product is None:
+                            await db.refresh(item, ["product"])
+                except Exception as item_refresh_error:
+                    # Log the error but continue processing other items
+                    logger.error(f"Error refreshing product for item {item.id} in order {order_id}: {str(item_refresh_error)}")
+        except Exception as refresh_error:
+            # Log the error but continue with the order as is
+            logger.error(f"Error refreshing order {order_id}: {str(refresh_error)}")
+            # We can still return the order even if refresh failed
                 
         return order
     except OrderValidationError as e:
@@ -122,9 +166,11 @@ async def get_order(
             )
         # Re-raise other validation errors to be caught by the global exception handler
         raise
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 404)
+        raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
-        logger = logging.getLogger(__name__)
         logger.error(f"Error retrieving order {order_id}: {str(e)}")
         raise OrderValidationError(
             detail=f"Error retrieving order: {str(e)}",
@@ -152,6 +198,8 @@ async def create_order(
         422: Validation error (OrderValidationError or ProductValidationError)
         500: Internal server error
     """
+    logger = logging.getLogger(__name__)
+    
     try:
         # The custom exceptions will be caught by the global exception handlers in app.errors
         order = await order_crud.create_with_items(db, obj_in=order_in)
@@ -164,14 +212,31 @@ async def create_order(
                 validation_errors=[{"msg": "Failed to create order"}]
             )
         
-        # Explicitly refresh the order with its items to ensure they remain attached to the session
-        # This prevents DetachedInstanceError when the response is serialized
-        await db.refresh(order, ["items"])
-        
-        # For each order item, ensure the product relationship is loaded
-        for item in order.items:
-            if hasattr(item, "product") and item.product is None:
-                await db.refresh(item, ["product"])
+        try:
+            # Explicitly refresh the order with its items to ensure they remain attached to the session
+            # This prevents DetachedInstanceError when the response is serialized
+            await db.refresh(order, ["items"])
+            
+            # Ensure items is not None to prevent ResponseValidationError
+            if order.items is None:
+                order.items = []
+                logger.warning(f"Order {order.id} has None items after creation, defaulting to empty list")
+            
+            # For each order item, ensure the product relationship is loaded
+            for item in order.items:
+                if item is None:
+                    continue
+                    
+                try:
+                    if hasattr(item, "product") and item.product is None:
+                        await db.refresh(item, ["product"])
+                except Exception as item_refresh_error:
+                    # Log the error but continue processing other items
+                    logger.error(f"Error refreshing product for item {item.id} in order {order.id}: {str(item_refresh_error)}")
+        except Exception as refresh_error:
+            # Log the error but continue with the order as is
+            logger.error(f"Error refreshing new order {order.id}: {str(refresh_error)}")
+            # We can still return the order even if refresh failed
                 
         return order
     except ProductValidationError as e:
@@ -188,7 +253,6 @@ async def create_order(
         raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
-        logger = logging.getLogger(__name__)
         logger.error(f"Error creating order: {str(e)}")
         raise OrderValidationError(
             detail=f"Error creating order: {str(e)}",
@@ -215,29 +279,71 @@ async def update_order(
         422: Validation error
         500: Internal server error
     """
+    logger = logging.getLogger(__name__)
+    
     try:
-        # The custom exceptions will be caught by the global exception handlers in app.errors
-        order = await order_crud.get(db, id=order_id)
+        # First check if the order exists
+        try:
+            order = await order_crud.get(db, id=order_id)
+        except OrderValidationError as e:
+            # If order not found, return 404
+            if e.error_type == "order_not_found":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=e.detail
+                )
+            # Re-raise other validation errors
+            raise
+            
+        # Update the order
         updated_order = await order_crud.update(db, db_obj=order, obj_in=order_in)
+        
         # Get the order with items to return in the response
-        order = await order_crud.get_with_items(db, id=order_id)
-        
-        # Check if order exists before attempting to refresh it
-        if not order:
-            raise OrderValidationError(
-                detail=f"Order with ID {order_id} not found",
-                error_type="order_not_found",
-                validation_errors=[{"msg": f"Order with ID {order_id} not found"}]
-            )
-        
-        # Explicitly refresh the order with its items to ensure they remain attached to the session
-        # This prevents DetachedInstanceError when the response is serialized
-        await db.refresh(order, ["items"])
-        
-        # For each order item, ensure the product relationship is loaded
-        for item in order.items:
-            if hasattr(item, "product") and item.product is None:
-                await db.refresh(item, ["product"])
+        try:
+            order = await order_crud.get_with_items(db, id=order_id)
+            
+            # Double check if order exists before proceeding
+            if not order:
+                logger.error(f"Order with ID {order_id} not found after update but no exception was raised")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Order with ID {order_id} not found after update"
+                )
+            
+            try:
+                # Explicitly refresh the order with its items to ensure they remain attached to the session
+                # This prevents DetachedInstanceError when the response is serialized
+                await db.refresh(order, ["items"])
+                
+                # Ensure items is not None to prevent ResponseValidationError
+                if order.items is None:
+                    order.items = []
+                    logger.warning(f"Order {order_id} has None items after update, defaulting to empty list")
+                
+                # For each order item, ensure the product relationship is loaded
+                for item in order.items:
+                    if item is None:
+                        continue
+                        
+                    try:
+                        if hasattr(item, "product") and item.product is None:
+                            await db.refresh(item, ["product"])
+                    except Exception as item_refresh_error:
+                        # Log the error but continue processing other items
+                        logger.error(f"Error refreshing product for item {item.id} in order {order_id}: {str(item_refresh_error)}")
+            except Exception as refresh_error:
+                # Log the error but continue with the order as is
+                logger.error(f"Error refreshing updated order {order_id}: {str(refresh_error)}")
+                # We can still return the order even if refresh failed
+        except OrderValidationError as e:
+            # If order not found, return 404
+            if e.error_type == "order_not_found":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=e.detail
+                )
+            # Re-raise other validation errors
+            raise
                 
         return order
     except OrderValidationError as e:
@@ -249,9 +355,11 @@ async def update_order(
             )
         # Re-raise other validation errors to be caught by the global exception handler
         raise
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 404)
+        raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
-        logger = logging.getLogger(__name__)
         logger.error(f"Error updating order {order_id}: {str(e)}")
         raise OrderValidationError(
             detail=f"Error updating order: {str(e)}",
@@ -276,12 +384,47 @@ async def delete_order(
         422: Validation error
         500: Internal server error
     """
+    logger = logging.getLogger(__name__)
+    
     try:
-        # The custom exceptions will be caught by the global exception handlers in app.errors
-        # First check if the order exists (will raise OrderValidationError if not)
-        await order_crud.get(db, id=order_id)
-        order = await order_crud.remove(db, id=order_id)
-        return order
+        # First check if the order exists
+        try:
+            # This will raise OrderValidationError if not found
+            await order_crud.get(db, id=order_id)
+        except OrderValidationError as e:
+            # If order not found, return 404
+            if e.error_type == "order_not_found":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=e.detail
+                )
+            # Re-raise other validation errors
+            raise
+            
+        # Delete the order
+        try:
+            order = await order_crud.remove(db, id=order_id)
+            
+            # Check if order was actually deleted
+            if not order:
+                logger.error(f"Order with ID {order_id} not deleted properly but no exception was raised")
+                raise OrderValidationError(
+                    detail=f"Failed to delete order with ID {order_id}",
+                    error_type="deletion_failed",
+                    validation_errors=[{"msg": f"Failed to delete order with ID {order_id}"}]
+                )
+                
+            return order
+        except OrderValidationError as e:
+            # If this is a specific error type that should be handled differently
+            if e.error_type == "invalid_order_deletion":
+                # For example, can't delete shipped/delivered orders
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=e.detail
+                )
+            # Re-raise other validation errors
+            raise
     except OrderValidationError as e:
         # Check if this is a "not found" error and return 404
         if e.error_type == "order_not_found":
@@ -291,9 +434,11 @@ async def delete_order(
             )
         # Re-raise other validation errors to be caught by the global exception handler
         raise
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 404)
+        raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
-        logger = logging.getLogger(__name__)
         logger.error(f"Error deleting order {order_id}: {str(e)}")
         raise OrderValidationError(
             detail=f"Error deleting order: {str(e)}",
@@ -320,6 +465,8 @@ async def update_order_status(
         422: Validation error
         500: Internal server error
     """
+    logger = logging.getLogger(__name__)
+    
     try:
         # Extract status from the request body
         if "status" not in status_update:
@@ -340,27 +487,56 @@ async def update_order_status(
                 validation_errors=[{"msg": f"Invalid status value. Must be one of: {', '.join(valid_statuses)}"}]
             )
         
-        # The custom exceptions will be caught by the global exception handlers in app.errors
-        updated_order = await order_crud.update_status(db, id=order_id, status=status_enum)
-        # Get the order with items to return in the response
-        order = await order_crud.get_with_items(db, id=order_id)
-        
-        # Check if order exists before attempting to refresh it
-        if not order:
-            raise OrderValidationError(
-                detail=f"Order with ID {order_id} not found",
-                error_type="order_not_found",
-                validation_errors=[{"msg": f"Order with ID {order_id} not found"}]
-            )
-        
-        # Explicitly refresh the order with its items to ensure they remain attached to the session
-        # This prevents DetachedInstanceError when the response is serialized
-        await db.refresh(order, ["items"])
-        
-        # For each order item, ensure the product relationship is loaded
-        for item in order.items:
-            if hasattr(item, "product") and item.product is None:
-                await db.refresh(item, ["product"])
+        # First check if the order exists
+        try:
+            # Update the order status
+            updated_order = await order_crud.update_status(db, id=order_id, status=status_enum)
+            
+            # Get the order with items to return in the response
+            order = await order_crud.get_with_items(db, id=order_id)
+            
+            # Double check if order exists before proceeding
+            if not order:
+                logger.error(f"Order with ID {order_id} not found after status update but no exception was raised")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Order with ID {order_id} not found after status update"
+                )
+            
+            try:
+                # Explicitly refresh the order with its items to ensure they remain attached to the session
+                # This prevents DetachedInstanceError when the response is serialized
+                await db.refresh(order, ["items"])
+                
+                # Ensure items is not None to prevent ResponseValidationError
+                if order.items is None:
+                    order.items = []
+                    logger.warning(f"Order {order_id} has None items after status update, defaulting to empty list")
+                
+                # For each order item, ensure the product relationship is loaded
+                for item in order.items:
+                    if item is None:
+                        continue
+                        
+                    try:
+                        if hasattr(item, "product") and item.product is None:
+                            await db.refresh(item, ["product"])
+                    except Exception as item_refresh_error:
+                        # Log the error but continue processing other items
+                        logger.error(f"Error refreshing product for item {item.id} in order {order_id}: {str(item_refresh_error)}")
+            except Exception as refresh_error:
+                # Log the error but continue with the order as is
+                logger.error(f"Error refreshing order {order_id} after status update: {str(refresh_error)}")
+                # We can still return the order even if refresh failed
+        except OrderValidationError as e:
+            # If order not found, return 404
+            if e.error_type == "order_not_found":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=e.detail
+                )
+            # Re-raise other validation errors
+            raise
                 
         return order
     except OrderValidationError as e:
@@ -372,9 +548,11 @@ async def update_order_status(
             )
         # Re-raise other validation errors to be caught by the global exception handler
         raise
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 404)
+        raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
-        logger = logging.getLogger(__name__)
         logger.error(f"Error updating order status for order {order_id}: {str(e)}")
         raise OrderValidationError(
             detail=f"Error updating order status: {str(e)}",
@@ -402,8 +580,15 @@ async def get_orders_by_customer_email(
         422: Validation error
         500: Internal server error
     """
+    logger = logging.getLogger(__name__)
+    
     try:
         orders = await order_crud.get_by_customer_email(db, email=customer_email, skip=skip, limit=limit)
+        
+        # Initialize empty list if orders is None to prevent ResponseValidationError
+        if orders is None:
+            logger.warning(f"No orders found for customer {customer_email}, returning empty list")
+            return []
         
         # Ensure all orders and their items are properly attached to the session
         for order in orders:
@@ -411,12 +596,29 @@ async def get_orders_by_customer_email(
             if not order:
                 continue
                 
-            await db.refresh(order, ["items"])
-            
-            # For each order item, ensure the product relationship is loaded
-            for item in order.items:
-                if hasattr(item, "product") and item.product is None:
-                    await db.refresh(item, ["product"])
+            try:
+                await db.refresh(order, ["items"])
+                
+                # Ensure items is not None to prevent ResponseValidationError
+                if order.items is None:
+                    order.items = []
+                    logger.warning(f"Order {order.id} has None items, defaulting to empty list")
+                
+                # For each order item, ensure the product relationship is loaded
+                for item in order.items:
+                    if item is None:
+                        continue
+                        
+                    try:
+                        if hasattr(item, "product") and item.product is None:
+                            await db.refresh(item, ["product"])
+                    except Exception as item_refresh_error:
+                        # Log the error but continue processing other items
+                        logger.error(f"Error refreshing product for item {item.id} in order {order.id}: {str(item_refresh_error)}")
+            except Exception as refresh_error:
+                # Log the error but continue with the order as is
+                logger.error(f"Error refreshing order {order.id}: {str(refresh_error)}")
+                # We can still include this order in the response even if refresh failed
         
         return orders
     except OrderValidationError as e:
@@ -430,7 +632,6 @@ async def get_orders_by_customer_email(
         raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
-        logger = logging.getLogger(__name__)
         logger.error(f"Error retrieving orders for customer {customer_email}: {str(e)}")
         raise OrderValidationError(
             detail=f"Error retrieving customer orders: {str(e)}",
