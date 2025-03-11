@@ -16,7 +16,8 @@ from app.schemas.order import (
     OrderCreate,
     OrderUpdate,
     OrderResponse,
-    OrderSummary
+    OrderSummary,
+    OrderStatusResponse
 )
 from app.models.order import OrderStatus
 from app.config import settings
@@ -156,7 +157,7 @@ async def create_order(
 
 
 # PUBLIC_INTERFACE
-@router.put("/{order_id}", response_model=OrderResponse)
+@router.put("/{order_id}", response_model=OrderStatusResponse)
 async def update_order(
     order_in: OrderUpdate,
     order_id: int = Path(..., gt=0, description="The ID of the order to update"),
@@ -199,7 +200,7 @@ async def update_order(
 
 
 # PUBLIC_INTERFACE
-@router.delete("/{order_id}", response_model=OrderResponse)
+@router.delete("/{order_id}", response_model=OrderStatusResponse)
 async def delete_order(
     order_id: int = Path(..., gt=0, description="The ID of the order to delete"),
     db: AsyncSession = Depends(get_db)
@@ -241,7 +242,7 @@ async def delete_order(
 
 
 # PUBLIC_INTERFACE
-@router.put("/{order_id}/status", response_model=OrderResponse)
+@router.put("/{order_id}/status", response_model=OrderStatusResponse)
 async def update_order_status(
     status: OrderStatus = Body(..., description="New order status"),
     order_id: int = Path(..., gt=0, description="The ID of the order to update"),

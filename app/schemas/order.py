@@ -72,7 +72,7 @@ class OrderItemResponse(OrderItemInDB):
     This schema is used for serializing order item data in API responses.
     It includes product details.
     """
-    product: ProductSummary
+    product: Optional[ProductSummary] = None
 
 
 # PUBLIC_INTERFACE
@@ -146,7 +146,7 @@ class OrderResponse(OrderInDB):
     This schema is used for serializing order data in API responses.
     It includes a list of order items with their product details.
     """
-    items: List[OrderItemResponse] = Field(..., description="List of order items")
+    items: List[OrderItemResponse] = Field(default_factory=list, description="List of order items")
 
 
 # PUBLIC_INTERFACE
@@ -161,5 +161,18 @@ class OrderSummary(BaseModel):
     total_amount: Decimal
     customer_name: str
     created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+# PUBLIC_INTERFACE
+class OrderStatusResponse(OrderInDB):
+    """
+    Schema for order status update response.
+    
+    This schema is used for serializing order data after a status update.
+    It's similar to OrderResponse but doesn't require items to be loaded.
+    """
+    items: Optional[List[OrderItemResponse]] = None
     
     model_config = ConfigDict(from_attributes=True)
