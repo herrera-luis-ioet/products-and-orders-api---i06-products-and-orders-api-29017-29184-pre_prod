@@ -160,13 +160,8 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
         Raises:
             OrderValidationError: If order not found
         """
-        query = (
-            select(self.model)
-            .options(selectinload(self.model.items))
-            .where(self.model.id == id)
-        )
-        result = await db.execute(query)
-        order = result.scalars().first()
+        # First check if the order exists
+        order = await super().get(db=db, id=id)
         
         if not order:
             raise OrderValidationError(
@@ -174,6 +169,9 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
                 error_type="order_not_found",
                 validation_errors=[{"msg": f"Order with ID {id} not found"}]
             )
+        
+        # Refresh the order with its items to ensure it's attached to the session
+        await db.refresh(order, ["items"])
             
         return order
 
