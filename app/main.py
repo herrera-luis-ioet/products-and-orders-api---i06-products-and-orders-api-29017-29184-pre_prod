@@ -12,11 +12,13 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 
 from app import __app_name__, __version__
 from app.config import settings
 from app.database import init_db
 from app.api.v1.api import api_router
+from app.errors import OrderValidationError, ProductValidationError, setup_exception_handlers
 
 # Configure logging
 logging.basicConfig(
@@ -74,6 +76,66 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": exc.errors(), "body": exc.body},
     )
 
+@app.exception_handler(OrderValidationError)
+async def order_validation_error_handler(request: Request, exc: OrderValidationError):
+    """Handle order validation errors."""
+    # Get correlation ID from request state if available
+    correlation_id = getattr(request.state, "correlation_id", None)
+    
+    # Log the error
+    logger.error(
+        f"Order Validation Error: {exc.detail} "
+        f"(code: {exc.code}, error_type: {exc.error_type}, "
+        f"correlation_id: {correlation_id})"
+    )
+    
+    # Create error response
+    error_response = {
+        "code": exc.code,
+        "message": exc.detail,
+        "correlation_id": correlation_id,
+        "product_ids": exc.product_ids,
+        "error_type": exc.error_type,
+        "validation_errors": exc.validation_errors
+    }
+    
+    # Return JSON response
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": jsonable_encoder(error_response)},
+        headers=exc.headers,
+    )
+
+@app.exception_handler(ProductValidationError)
+async def product_validation_error_handler(request: Request, exc: ProductValidationError):
+    """Handle product validation errors."""
+    # Get correlation ID from request state if available
+    correlation_id = getattr(request.state, "correlation_id", None)
+    
+    # Log the error
+    logger.error(
+        f"Product Validation Error: {exc.detail} "
+        f"(code: {exc.code}, error_type: {exc.error_type}, "
+        f"correlation_id: {correlation_id})"
+    )
+    
+    # Create error response
+    error_response = {
+        "code": exc.code,
+        "message": exc.detail,
+        "correlation_id": correlation_id,
+        "product_ids": exc.product_ids,
+        "error_type": exc.error_type,
+        "validation_errors": exc.validation_errors
+    }
+    
+    # Return JSON response
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": jsonable_encoder(error_response)},
+        headers=exc.headers,
+    )
+
 
 # Health check endpoint
 @app.get("/health", tags=["Health"])
@@ -91,6 +153,9 @@ async def health_check():
         "environment": settings.ENV,
     }
 
+
+# Set up all exception handlers from app.errors
+setup_exception_handlers(app)
 
 # Include API router
 app.include_router(

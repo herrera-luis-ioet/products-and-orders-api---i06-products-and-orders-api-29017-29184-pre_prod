@@ -5,6 +5,7 @@ This module provides endpoints for creating, reading, updating, and deleting ord
 """
 
 from typing import List, Optional, Any
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,12 +44,26 @@ async def list_orders(
     - **sort_by**: Field to sort by (e.g., created_at, total_amount)
     - **sort_desc**: Sort in descending order if true
     - **status**: Filter by order status if provided
+    
+    Responses:
+        200: List of orders
+        422: Validation error
+        500: Internal server error
     """
-    if status:
-        orders = await order_crud.get_by_status(db, status=status, skip=skip, limit=limit)
-    else:
-        orders = await order_crud.get_multi(db, skip=skip, limit=limit)
-    return orders
+    try:
+        if status:
+            orders = await order_crud.get_by_status(db, status=status, skip=skip, limit=limit)
+        else:
+            orders = await order_crud.get_multi(db, skip=skip, limit=limit)
+        return orders
+    except Exception as e:
+        # Log the error and convert to OrderValidationError
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error listing orders: {str(e)}")
+        raise OrderValidationError(
+            detail=f"Error listing orders: {str(e)}",
+            error_type="list_error"
+        )
 
 
 # PUBLIC_INTERFACE
@@ -65,9 +80,21 @@ async def get_order(
     Raises:
         OrderValidationError: If order not found
     """
-    # The custom exceptions will be caught by the global exception handlers in app.errors
-    order = await order_crud.get_with_items(db, id=order_id)
-    return order
+    try:
+        # The custom exceptions will be caught by the global exception handlers in app.errors
+        order = await order_crud.get_with_items(db, id=order_id)
+        return order
+    except OrderValidationError as e:
+        # Re-raise the exception to be caught by the global exception handler
+        raise
+    except Exception as e:
+        # Log the error and convert to OrderValidationError
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error retrieving order {order_id}: {str(e)}")
+        raise OrderValidationError(
+            detail=f"Error retrieving order: {str(e)}",
+            error_type="retrieval_error"
+        )
 
 
 # PUBLIC_INTERFACE
@@ -84,10 +111,30 @@ async def create_order(
     Raises:
         OrderValidationError: If order validation fails
         ProductValidationError: If product validation fails
+    
+    Returns:
+        OrderResponse: The created order with all items
+        
+    Responses:
+        201: Order created successfully
+        422: Validation error (OrderValidationError or ProductValidationError)
+        500: Internal server error
     """
-    # The custom exceptions will be caught by the global exception handlers in app.errors
-    order = await order_crud.create_with_items(db, obj_in=order_in)
-    return order
+    try:
+        # The custom exceptions will be caught by the global exception handlers in app.errors
+        order = await order_crud.create_with_items(db, obj_in=order_in)
+        return order
+    except (OrderValidationError, ProductValidationError) as e:
+        # Re-raise the exception to be caught by the global exception handler
+        raise
+    except Exception as e:
+        # Log the error and convert to OrderValidationError
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error creating order: {str(e)}")
+        raise OrderValidationError(
+            detail=f"Error creating order: {str(e)}",
+            error_type="creation_error"
+        )
 
 
 # PUBLIC_INTERFACE
@@ -105,11 +152,29 @@ async def update_order(
     
     Raises:
         OrderValidationError: If order validation fails
+    
+    Responses:
+        200: Order updated successfully
+        404: Order not found
+        422: Validation error
+        500: Internal server error
     """
-    # The custom exceptions will be caught by the global exception handlers in app.errors
-    order = await order_crud.get(db, id=order_id)
-    updated_order = await order_crud.update(db, db_obj=order, obj_in=order_in)
-    return updated_order
+    try:
+        # The custom exceptions will be caught by the global exception handlers in app.errors
+        order = await order_crud.get(db, id=order_id)
+        updated_order = await order_crud.update(db, db_obj=order, obj_in=order_in)
+        return updated_order
+    except OrderValidationError as e:
+        # Re-raise the exception to be caught by the global exception handler
+        raise
+    except Exception as e:
+        # Log the error and convert to OrderValidationError
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error updating order {order_id}: {str(e)}")
+        raise OrderValidationError(
+            detail=f"Error updating order: {str(e)}",
+            error_type="update_error"
+        )
 
 
 # PUBLIC_INTERFACE
@@ -125,12 +190,30 @@ async def delete_order(
     
     Raises:
         OrderValidationError: If order validation fails
+    
+    Responses:
+        200: Order deleted successfully
+        404: Order not found
+        422: Validation error
+        500: Internal server error
     """
-    # The custom exceptions will be caught by the global exception handlers in app.errors
-    # First check if the order exists (will raise OrderValidationError if not)
-    await order_crud.get(db, id=order_id)
-    order = await order_crud.remove(db, id=order_id)
-    return order
+    try:
+        # The custom exceptions will be caught by the global exception handlers in app.errors
+        # First check if the order exists (will raise OrderValidationError if not)
+        await order_crud.get(db, id=order_id)
+        order = await order_crud.remove(db, id=order_id)
+        return order
+    except OrderValidationError as e:
+        # Re-raise the exception to be caught by the global exception handler
+        raise
+    except Exception as e:
+        # Log the error and convert to OrderValidationError
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error deleting order {order_id}: {str(e)}")
+        raise OrderValidationError(
+            detail=f"Error deleting order: {str(e)}",
+            error_type="deletion_error"
+        )
 
 
 # PUBLIC_INTERFACE
@@ -148,10 +231,28 @@ async def update_order_status(
     
     Raises:
         OrderValidationError: If order validation fails
+    
+    Responses:
+        200: Order status updated successfully
+        404: Order not found
+        422: Validation error
+        500: Internal server error
     """
-    # The custom exceptions will be caught by the global exception handlers in app.errors
-    updated_order = await order_crud.update_status(db, id=order_id, status=status)
-    return updated_order
+    try:
+        # The custom exceptions will be caught by the global exception handlers in app.errors
+        updated_order = await order_crud.update_status(db, id=order_id, status=status)
+        return updated_order
+    except OrderValidationError as e:
+        # Re-raise the exception to be caught by the global exception handler
+        raise
+    except Exception as e:
+        # Log the error and convert to OrderValidationError
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error updating order status for order {order_id}: {str(e)}")
+        raise OrderValidationError(
+            detail=f"Error updating order status: {str(e)}",
+            error_type="status_update_error"
+        )
 
 
 # PUBLIC_INTERFACE
@@ -168,6 +269,20 @@ async def get_orders_by_customer_email(
     - **customer_email**: Email address of the customer
     - **skip**: Number of orders to skip (for pagination)
     - **limit**: Maximum number of orders to return
+    
+    Responses:
+        200: List of orders for the customer
+        422: Validation error
+        500: Internal server error
     """
-    orders = await order_crud.get_by_customer_email(db, email=customer_email, skip=skip, limit=limit)
-    return orders
+    try:
+        orders = await order_crud.get_by_customer_email(db, email=customer_email, skip=skip, limit=limit)
+        return orders
+    except Exception as e:
+        # Log the error and convert to OrderValidationError
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error retrieving orders for customer {customer_email}: {str(e)}")
+        raise OrderValidationError(
+            detail=f"Error retrieving customer orders: {str(e)}",
+            error_type="customer_orders_error"
+        )
