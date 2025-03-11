@@ -433,7 +433,7 @@ async def delete_order(
 # PUBLIC_INTERFACE
 @router.put("/{order_id}/status", response_model=OrderStatusResponse)
 async def update_order_status(
-    status_update: dict = Body(..., description="New order status", example={"status": "shipped"}),
+    status_update: dict = Body(..., description="New order status", examples={"status_update": {"value": {"status": "shipped"}}}),
     order_id: int = Path(..., gt=0, description="The ID of the order to update"),
     db: AsyncSession = Depends(get_db)
 ) -> Any:
