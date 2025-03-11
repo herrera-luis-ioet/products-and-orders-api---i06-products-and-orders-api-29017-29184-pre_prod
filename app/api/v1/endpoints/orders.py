@@ -95,6 +95,14 @@ async def get_order(
         # The custom exceptions will be caught by the global exception handlers in app.errors
         order = await order_crud.get_with_items(db, id=order_id)
         
+        # Check if order exists before attempting to refresh it
+        if not order:
+            raise OrderValidationError(
+                detail=f"Order with ID {order_id} not found",
+                error_type="order_not_found",
+                validation_errors=[{"msg": f"Order with ID {order_id} not found"}]
+            )
+        
         # Explicitly refresh the order with its items to ensure they remain attached to the session
         # This prevents DetachedInstanceError when the response is serialized
         await db.refresh(order, ["items"])
@@ -147,6 +155,14 @@ async def create_order(
     try:
         # The custom exceptions will be caught by the global exception handlers in app.errors
         order = await order_crud.create_with_items(db, obj_in=order_in)
+        
+        # Check if order was created successfully
+        if not order:
+            raise OrderValidationError(
+                detail="Failed to create order",
+                error_type="order_creation_failed",
+                validation_errors=[{"msg": "Failed to create order"}]
+            )
         
         # Explicitly refresh the order with its items to ensure they remain attached to the session
         # This prevents DetachedInstanceError when the response is serialized
@@ -205,6 +221,14 @@ async def update_order(
         updated_order = await order_crud.update(db, db_obj=order, obj_in=order_in)
         # Get the order with items to return in the response
         order = await order_crud.get_with_items(db, id=order_id)
+        
+        # Check if order exists before attempting to refresh it
+        if not order:
+            raise OrderValidationError(
+                detail=f"Order with ID {order_id} not found",
+                error_type="order_not_found",
+                validation_errors=[{"msg": f"Order with ID {order_id} not found"}]
+            )
         
         # Explicitly refresh the order with its items to ensure they remain attached to the session
         # This prevents DetachedInstanceError when the response is serialized
@@ -321,6 +345,14 @@ async def update_order_status(
         # Get the order with items to return in the response
         order = await order_crud.get_with_items(db, id=order_id)
         
+        # Check if order exists before attempting to refresh it
+        if not order:
+            raise OrderValidationError(
+                detail=f"Order with ID {order_id} not found",
+                error_type="order_not_found",
+                validation_errors=[{"msg": f"Order with ID {order_id} not found"}]
+            )
+        
         # Explicitly refresh the order with its items to ensure they remain attached to the session
         # This prevents DetachedInstanceError when the response is serialized
         await db.refresh(order, ["items"])
@@ -375,6 +407,10 @@ async def get_orders_by_customer_email(
         
         # Ensure all orders and their items are properly attached to the session
         for order in orders:
+            # Skip empty orders (should not happen, but just to be safe)
+            if not order:
+                continue
+                
             await db.refresh(order, ["items"])
             
             # For each order item, ensure the product relationship is loaded
