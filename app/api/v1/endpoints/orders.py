@@ -7,7 +7,7 @@ This module provides endpoints for creating, reading, updating, and deleting ord
 from typing import List, Optional, Any
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, status, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, status, Body, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crud.order import order as order_crud
@@ -56,6 +56,9 @@ async def list_orders(
         else:
             orders = await order_crud.get_multi(db, skip=skip, limit=limit)
         return orders
+    except OrderValidationError as e:
+        # Re-raise the exception to be caught by the global exception handler
+        raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
         logger = logging.getLogger(__name__)
@@ -77,15 +80,24 @@ async def get_order(
     
     - **order_id**: The ID of the order to retrieve
     
-    Raises:
-        OrderValidationError: If order not found
+    Responses:
+        200: Order details
+        404: Order not found
+        422: Validation error
+        500: Internal server error
     """
     try:
         # The custom exceptions will be caught by the global exception handlers in app.errors
         order = await order_crud.get_with_items(db, id=order_id)
         return order
     except OrderValidationError as e:
-        # Re-raise the exception to be caught by the global exception handler
+        # Check if this is a "not found" error and return 404
+        if e.error_type == "order_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=e.detail
+            )
+        # Re-raise other validation errors to be caught by the global exception handler
         raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
@@ -108,15 +120,12 @@ async def create_order(
     
     - **order_in**: Order data to create, including items
     
-    Raises:
-        OrderValidationError: If order validation fails
-        ProductValidationError: If product validation fails
-    
     Returns:
         OrderResponse: The created order with all items
         
     Responses:
         201: Order created successfully
+        404: Product not found
         422: Validation error (OrderValidationError or ProductValidationError)
         500: Internal server error
     """
@@ -124,7 +133,16 @@ async def create_order(
         # The custom exceptions will be caught by the global exception handlers in app.errors
         order = await order_crud.create_with_items(db, obj_in=order_in)
         return order
-    except (OrderValidationError, ProductValidationError) as e:
+    except ProductValidationError as e:
+        # Check if this is a "product not found" error and return 404
+        if e.error_type == "product_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Product not found: {e.detail}"
+            )
+        # Re-raise other validation errors to be caught by the global exception handler
+        raise
+    except OrderValidationError as e:
         # Re-raise the exception to be caught by the global exception handler
         raise
     except Exception as e:
@@ -150,9 +168,6 @@ async def update_order(
     - **order_id**: The ID of the order to update
     - **order_in**: Updated order data
     
-    Raises:
-        OrderValidationError: If order validation fails
-    
     Responses:
         200: Order updated successfully
         404: Order not found
@@ -165,7 +180,13 @@ async def update_order(
         updated_order = await order_crud.update(db, db_obj=order, obj_in=order_in)
         return updated_order
     except OrderValidationError as e:
-        # Re-raise the exception to be caught by the global exception handler
+        # Check if this is a "not found" error and return 404
+        if e.error_type == "order_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=e.detail
+            )
+        # Re-raise other validation errors to be caught by the global exception handler
         raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
@@ -188,9 +209,6 @@ async def delete_order(
     
     - **order_id**: The ID of the order to delete
     
-    Raises:
-        OrderValidationError: If order validation fails
-    
     Responses:
         200: Order deleted successfully
         404: Order not found
@@ -204,7 +222,13 @@ async def delete_order(
         order = await order_crud.remove(db, id=order_id)
         return order
     except OrderValidationError as e:
-        # Re-raise the exception to be caught by the global exception handler
+        # Check if this is a "not found" error and return 404
+        if e.error_type == "order_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=e.detail
+            )
+        # Re-raise other validation errors to be caught by the global exception handler
         raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
@@ -229,9 +253,6 @@ async def update_order_status(
     - **order_id**: The ID of the order to update
     - **status**: New status for the order
     
-    Raises:
-        OrderValidationError: If order validation fails
-    
     Responses:
         200: Order status updated successfully
         404: Order not found
@@ -243,7 +264,13 @@ async def update_order_status(
         updated_order = await order_crud.update_status(db, id=order_id, status=status)
         return updated_order
     except OrderValidationError as e:
-        # Re-raise the exception to be caught by the global exception handler
+        # Check if this is a "not found" error and return 404
+        if e.error_type == "order_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=e.detail
+            )
+        # Re-raise other validation errors to be caught by the global exception handler
         raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
@@ -278,6 +305,15 @@ async def get_orders_by_customer_email(
     try:
         orders = await order_crud.get_by_customer_email(db, email=customer_email, skip=skip, limit=limit)
         return orders
+    except OrderValidationError as e:
+        # Check if this is a specific error type that should be handled differently
+        if e.error_type == "customer_not_found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=e.detail
+            )
+        # Re-raise other validation errors to be caught by the global exception handler
+        raise
     except Exception as e:
         # Log the error and convert to OrderValidationError
         logger = logging.getLogger(__name__)
