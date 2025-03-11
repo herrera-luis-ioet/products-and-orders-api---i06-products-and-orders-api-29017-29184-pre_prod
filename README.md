@@ -1,1 +1,3 @@
-# products-and-orders-api---i06-products-and-orders-api-29017-29184-pre_prod
+# Project Repository
+
+This is the initial README file for the project.
