@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from app import __app_name__, __version__
 from app.config import settings
 from app.database import init_db
+from app.api.v1.api import api_router
 
 # Configure logging
 logging.basicConfig(
@@ -91,18 +92,11 @@ async def health_check():
     }
 
 
-# Include API routers
-# app.include_router(
-#     products_router,
-#     prefix=f"{settings.API_V1_STR}/products",
-#     tags=["Products"],
-# )
-# 
-# app.include_router(
-#     orders_router,
-#     prefix=f"{settings.API_V1_STR}/orders",
-#     tags=["Orders"],
-# )
+# Include API router
+app.include_router(
+    api_router,
+    prefix=settings.API_V1_STR,
+)
 
 
 @app.get("/", tags=["Root"])
