@@ -141,6 +141,29 @@ Run the container:
 docker run -p 8000:8000 products-and-orders-api
 ```
 
+### Docker Compose
+
+For local development with monitoring tools:
+
+```bash
+docker-compose up -d
+```
+
+This will start:
+- The API service with hot-reload enabled
+- Prometheus for metrics collection
+- Grafana for metrics visualization (available at http://localhost:3000)
+
+### CI/CD Pipeline
+
+This project uses GitHub Actions for continuous integration and delivery:
+
+- **Linting**: Runs Black, isort, Flake8, and MyPy
+- **Testing**: Runs pytest with coverage reporting
+- **Building**: Builds and pushes Docker image on successful merge to main branch or when tags are pushed
+
+The workflow is defined in `.github/workflows/ci.yml`.
+
 ## License
 
 [Specify your license here]
