@@ -4,7 +4,7 @@ API endpoints for order management.
 This module provides endpoints for creating, reading, updating, and deleting orders.
 """
 
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Union
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status, Body, Response
@@ -19,12 +19,64 @@ from app.schemas.order import (
     OrderSummary,
     OrderStatusResponse
 )
-from app.models.order import OrderStatus
+from app.models.order import OrderStatus, Order, OrderItem
 from app.config import settings
 from app.errors import OrderValidationError, ProductValidationError
 
 # Create router for orders endpoints
 router = APIRouter()
+
+
+async def _safely_refresh_product_relationships(
+    order: Union[Order, None],
+    db: AsyncSession,
+    logger: logging.Logger
+) -> None:
+    """
+    Safely refresh product relationships for order items.
+    
+    This helper function ensures that product relationships are properly loaded
+    for all order items, handling the async context correctly to avoid
+    'greenlet_spawn has not been called' errors.
+    
+    Args:
+        order: The order object to refresh relationships for
+        db: SQLAlchemy async session
+        logger: Logger instance for error reporting
+        
+    Returns:
+        None
+    """
+    # Skip if order is None
+    if not order:
+        return
+    
+    try:
+        # First refresh the order with its items
+        await db.refresh(order, ["items"])
+        
+        # Ensure items is not None to prevent ResponseValidationError
+        if order.items is None:
+            order.items = []
+            logger.warning(f"Order {order.id} has None items, defaulting to empty list")
+            return
+        
+        # For each order item, ensure the product relationship is loaded
+        for item in order.items:
+            if item is None:
+                continue
+                
+            try:
+                # Only refresh if the product attribute exists and is None
+                if hasattr(item, "product") and item.product is None:
+                    await db.refresh(item, ["product"])
+            except Exception as item_refresh_error:
+                # Log the error but continue processing other items
+                logger.error(f"Error refreshing product for item {item.id} in order {order.id}: {str(item_refresh_error)}")
+    except Exception as refresh_error:
+        # Log the error but continue with the order as is
+        logger.error(f"Error refreshing order {order.id}: {str(refresh_error)}")
+        # We can still return the order even if refresh failed
 
 
 # PUBLIC_INTERFACE
@@ -129,32 +181,8 @@ async def get_order(
                 detail=f"Order with ID {order_id} not found"
             )
         
-        try:
-            # Explicitly refresh the order with its items to ensure they remain attached to the session
-            # This prevents DetachedInstanceError when the response is serialized
-            await db.refresh(order, ["items"])
-            
-            # Ensure items is not None to prevent ResponseValidationError
-            if order.items is None:
-                order.items = []
-                logger.warning(f"Order {order_id} has None items, defaulting to empty list")
-            
-            # For each order item, ensure the product relationship is loaded
-            for item in order.items:
-                if item is None:
-                    continue
-                    
-                try:
-                    if hasattr(item, "product"):
-                        if item.product is None:
-                            await db.refresh(item, ["product"])
-                except Exception as item_refresh_error:
-                    # Log the error but continue processing other items
-                    logger.error(f"Error refreshing product for item {item.id} in order {order_id}: {str(item_refresh_error)}")
-        except Exception as refresh_error:
-            # Log the error but continue with the order as is
-            logger.error(f"Error refreshing order {order_id}: {str(refresh_error)}")
-            # We can still return the order even if refresh failed
+        # Use the helper function to safely refresh product relationships
+        await _safely_refresh_product_relationships(order, db, logger)
                 
         return order
     except OrderValidationError as e:
@@ -212,31 +240,8 @@ async def create_order(
                 validation_errors=[{"msg": "Failed to create order"}]
             )
         
-        try:
-            # Explicitly refresh the order with its items to ensure they remain attached to the session
-            # This prevents DetachedInstanceError when the response is serialized
-            await db.refresh(order, ["items"])
-            
-            # Ensure items is not None to prevent ResponseValidationError
-            if order.items is None:
-                order.items = []
-                logger.warning(f"Order {order.id} has None items after creation, defaulting to empty list")
-            
-            # For each order item, ensure the product relationship is loaded
-            for item in order.items:
-                if item is None:
-                    continue
-                    
-                try:
-                    if hasattr(item, "product") and item.product is None:
-                        await db.refresh(item, ["product"])
-                except Exception as item_refresh_error:
-                    # Log the error but continue processing other items
-                    logger.error(f"Error refreshing product for item {item.id} in order {order.id}: {str(item_refresh_error)}")
-        except Exception as refresh_error:
-            # Log the error but continue with the order as is
-            logger.error(f"Error refreshing new order {order.id}: {str(refresh_error)}")
-            # We can still return the order even if refresh failed
+        # Use the helper function to safely refresh product relationships
+        await _safely_refresh_product_relationships(order, db, logger)
                 
         return order
     except ProductValidationError as e:
@@ -310,31 +315,8 @@ async def update_order(
                     detail=f"Order with ID {order_id} not found after update"
                 )
             
-            try:
-                # Explicitly refresh the order with its items to ensure they remain attached to the session
-                # This prevents DetachedInstanceError when the response is serialized
-                await db.refresh(order, ["items"])
-                
-                # Ensure items is not None to prevent ResponseValidationError
-                if order.items is None:
-                    order.items = []
-                    logger.warning(f"Order {order_id} has None items after update, defaulting to empty list")
-                
-                # For each order item, ensure the product relationship is loaded
-                for item in order.items:
-                    if item is None:
-                        continue
-                        
-                    try:
-                        if hasattr(item, "product") and item.product is None:
-                            await db.refresh(item, ["product"])
-                    except Exception as item_refresh_error:
-                        # Log the error but continue processing other items
-                        logger.error(f"Error refreshing product for item {item.id} in order {order_id}: {str(item_refresh_error)}")
-            except Exception as refresh_error:
-                # Log the error but continue with the order as is
-                logger.error(f"Error refreshing updated order {order_id}: {str(refresh_error)}")
-                # We can still return the order even if refresh failed
+            # Use the helper function to safely refresh product relationships
+            await _safely_refresh_product_relationships(order, db, logger)
         except OrderValidationError as e:
             # If order not found, return 404
             if e.error_type == "order_not_found":
@@ -503,31 +485,8 @@ async def update_order_status(
                     detail=f"Order with ID {order_id} not found after status update"
                 )
             
-            try:
-                # Explicitly refresh the order with its items to ensure they remain attached to the session
-                # This prevents DetachedInstanceError when the response is serialized
-                await db.refresh(order, ["items"])
-                
-                # Ensure items is not None to prevent ResponseValidationError
-                if order.items is None:
-                    order.items = []
-                    logger.warning(f"Order {order_id} has None items after status update, defaulting to empty list")
-                
-                # For each order item, ensure the product relationship is loaded
-                for item in order.items:
-                    if item is None:
-                        continue
-                        
-                    try:
-                        if hasattr(item, "product") and item.product is None:
-                            await db.refresh(item, ["product"])
-                    except Exception as item_refresh_error:
-                        # Log the error but continue processing other items
-                        logger.error(f"Error refreshing product for item {item.id} in order {order_id}: {str(item_refresh_error)}")
-            except Exception as refresh_error:
-                # Log the error but continue with the order as is
-                logger.error(f"Error refreshing order {order_id} after status update: {str(refresh_error)}")
-                # We can still return the order even if refresh failed
+            # Use the helper function to safely refresh product relationships
+            await _safely_refresh_product_relationships(order, db, logger)
         except OrderValidationError as e:
             # If order not found, return 404
             if e.error_type == "order_not_found":
@@ -596,29 +555,8 @@ async def get_orders_by_customer_email(
             if not order:
                 continue
                 
-            try:
-                await db.refresh(order, ["items"])
-                
-                # Ensure items is not None to prevent ResponseValidationError
-                if order.items is None:
-                    order.items = []
-                    logger.warning(f"Order {order.id} has None items, defaulting to empty list")
-                
-                # For each order item, ensure the product relationship is loaded
-                for item in order.items:
-                    if item is None:
-                        continue
-                        
-                    try:
-                        if hasattr(item, "product") and item.product is None:
-                            await db.refresh(item, ["product"])
-                    except Exception as item_refresh_error:
-                        # Log the error but continue processing other items
-                        logger.error(f"Error refreshing product for item {item.id} in order {order.id}: {str(item_refresh_error)}")
-            except Exception as refresh_error:
-                # Log the error but continue with the order as is
-                logger.error(f"Error refreshing order {order.id}: {str(refresh_error)}")
-                # We can still include this order in the response even if refresh failed
+            # Use the helper function to safely refresh product relationships
+            await _safely_refresh_product_relationships(order, db, logger)
         
         return orders
     except OrderValidationError as e:
