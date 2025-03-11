@@ -8,6 +8,7 @@ from app.crud.base import CRUDBase
 from app.models.order import Order, OrderItem, OrderStatus
 from app.schemas.order import OrderCreate, OrderUpdate, OrderItemCreate
 from app.crud.product import product as product_crud
+from app.errors import OrderValidationError, ProductValidationError
 
 
 class CRUDOrderItem(CRUDBase[OrderItem, OrderItemCreate, Dict[str, Any]]):
@@ -31,9 +32,34 @@ class CRUDOrderItem(CRUDBase[OrderItem, OrderItemCreate, Dict[str, Any]]):
             
         Returns:
             The created order item
+            
+        Raises:
+            ProductValidationError: If product validation fails
         """
         # Get the product to get its current price
         product_obj = await product_crud.get(db=db, id=obj_in.product_id)
+        
+        # Check if product exists
+        if not product_obj:
+            raise ProductValidationError(
+                detail=f"Product with ID {obj_in.product_id} not found",
+                product_ids=[obj_in.product_id],
+                error_type="product_not_found",
+                validation_errors=[{"msg": f"Product with ID {obj_in.product_id} not found"}]
+            )
+        
+        # Check if product has sufficient inventory
+        if product_obj.inventory_count < obj_in.quantity:
+            raise ProductValidationError(
+                detail="Insufficient inventory",
+                product_ids=[obj_in.product_id],
+                error_type="insufficient_inventory",
+                validation_errors=[{
+                    "product_id": obj_in.product_id,
+                    "requested": obj_in.quantity,
+                    "available": product_obj.inventory_count
+                }]
+            )
         
         # Use the product's current price if not specified
         unit_price = obj_in.unit_price if obj_in.unit_price else product_obj.price
@@ -54,10 +80,29 @@ class CRUDOrderItem(CRUDBase[OrderItem, OrderItemCreate, Dict[str, Any]]):
         await db.commit()
         await db.refresh(db_obj)
         
-        # Update product inventory
-        await product_crud.update_inventory(
-            db=db, id=obj_in.product_id, quantity_change=-obj_in.quantity
-        )
+        try:
+            # Update product inventory
+            updated_product = await product_crud.update_inventory(
+                db=db, id=obj_in.product_id, quantity_change=-obj_in.quantity
+            )
+            
+            if not updated_product:
+                raise ProductValidationError(
+                    detail=f"Failed to update inventory for product {obj_in.product_id}",
+                    product_ids=[obj_in.product_id],
+                    error_type="inventory_update_failed",
+                    validation_errors=[{"msg": f"Failed to update inventory for product {obj_in.product_id}"}]
+                )
+        except Exception as e:
+            # If inventory update fails, raise a ProductValidationError
+            if not isinstance(e, ProductValidationError):
+                raise ProductValidationError(
+                    detail=f"Error updating product inventory: {str(e)}",
+                    product_ids=[obj_in.product_id],
+                    error_type="inventory_update_failed",
+                    validation_errors=[{"msg": str(e)}]
+                )
+            raise
         
         return db_obj
 
@@ -68,6 +113,30 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
     
     Extends the base CRUD operations with order-specific functionality.
     """
+    
+    # PUBLIC_INTERFACE
+    async def get(self, db: AsyncSession, id: int) -> Optional[Order]:
+        """
+        Get an order by ID.
+        
+        Args:
+            db: Database session
+            id: Order ID
+            
+        Returns:
+            The order if found
+            
+        Raises:
+            OrderValidationError: If order not found
+        """
+        order = await super().get(db=db, id=id)
+        if not order:
+            raise OrderValidationError(
+                detail=f"Order with ID {id} not found",
+                error_type="order_not_found",
+                validation_errors=[{"msg": f"Order with ID {id} not found"}]
+            )
+        return order
 
     # PUBLIC_INTERFACE
     async def get_with_items(self, db: AsyncSession, id: int) -> Optional[Order]:
@@ -79,7 +148,10 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
             id: Order ID
             
         Returns:
-            The order with items if found, None otherwise
+            The order with items if found
+            
+        Raises:
+            OrderValidationError: If order not found
         """
         query = (
             select(self.model)
@@ -87,7 +159,16 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
             .where(self.model.id == id)
         )
         result = await db.execute(query)
-        return result.scalars().first()
+        order = result.scalars().first()
+        
+        if not order:
+            raise OrderValidationError(
+                detail=f"Order with ID {id} not found",
+                error_type="order_not_found",
+                validation_errors=[{"msg": f"Order with ID {id} not found"}]
+            )
+            
+        return order
 
     # PUBLIC_INTERFACE
     async def get_by_customer_email(
@@ -112,7 +193,10 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
             .limit(limit)
         )
         result = await db.execute(query)
-        return result.scalars().all()
+        orders = result.scalars().all()
+        
+        # No need to raise an exception if no orders found, just return empty list
+        return orders
 
     # PUBLIC_INTERFACE
     async def get_by_status(
@@ -152,7 +236,19 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
             
         Returns:
             The created order
+            
+        Raises:
+            OrderValidationError: If order validation fails
+            ProductValidationError: If product validation fails
         """
+        # Validate order has items
+        if not obj_in.items or len(obj_in.items) == 0:
+            raise OrderValidationError(
+                detail="Order must contain at least one item",
+                error_type="empty_order",
+                validation_errors=[{"msg": "Order must contain at least one item"}]
+            )
+            
         # Create order without items first
         order_data = obj_in.model_dump(exclude={"items"})
         
@@ -160,17 +256,49 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
         if "status" not in order_data:
             order_data["status"] = OrderStatus.PENDING
             
-        # Calculate total amount from items
+        # Calculate total amount from items and validate products
         total_amount = Decimal(0)
+        invalid_products = []
+        insufficient_inventory = []
+        
         for item in obj_in.items:
             product_obj = await product_crud.get(db=db, id=item.product_id)
+            
+            # Check if product exists
             if not product_obj:
-                raise ValueError(f"Product with ID {item.product_id} not found")
+                invalid_products.append(item.product_id)
+                continue
+                
+            # Check if product has sufficient inventory
+            if product_obj.inventory_count < item.quantity:
+                insufficient_inventory.append({
+                    "product_id": item.product_id,
+                    "requested": item.quantity,
+                    "available": product_obj.inventory_count
+                })
+                continue
                 
             # Use the product's current price if not specified
             unit_price = item.unit_price if item.unit_price else product_obj.price
             item_total = unit_price * Decimal(item.quantity)
             total_amount += item_total
+        
+        # Handle validation errors
+        if invalid_products:
+            raise ProductValidationError(
+                detail=f"One or more products not found",
+                product_ids=invalid_products,
+                error_type="product_not_found",
+                validation_errors=[{"msg": f"Product with ID {pid} not found"} for pid in invalid_products]
+            )
+            
+        if insufficient_inventory:
+            raise ProductValidationError(
+                detail="Insufficient inventory for one or more products",
+                product_ids=[item["product_id"] for item in insufficient_inventory],
+                error_type="insufficient_inventory",
+                validation_errors=insufficient_inventory
+            )
             
         # Create the order
         db_obj = Order(**order_data, total_amount=total_amount)
@@ -180,9 +308,17 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
         
         # Create order items
         order_item_crud = CRUDOrderItem(OrderItem)
-        for item in obj_in.items:
-            await order_item_crud.create_with_order(
-                db=db, obj_in=item, order_id=db_obj.id
+        try:
+            for item in obj_in.items:
+                await order_item_crud.create_with_order(
+                    db=db, obj_in=item, order_id=db_obj.id
+                )
+        except Exception as e:
+            # If there's an error creating order items, raise an OrderValidationError
+            raise OrderValidationError(
+                detail=f"Error creating order items: {str(e)}",
+                error_type="order_item_creation_failed",
+                validation_errors=[{"msg": str(e)}]
             )
             
         # Refresh order to include items
@@ -203,15 +339,61 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
             
         Returns:
             The updated order if found, None otherwise
+            
+        Raises:
+            OrderValidationError: If order validation fails
         """
         order = await self.get(db=db, id=id)
-        if not order:
-            return None
+            
+        # Validate status transition
+        # For example, you might want to prevent changing from DELIVERED back to PENDING
+        if order.status == OrderStatus.DELIVERED and status == OrderStatus.PENDING:
+            raise OrderValidationError(
+                detail="Cannot change order status from DELIVERED to PENDING",
+                error_type="invalid_status_transition",
+                validation_errors=[{
+                    "msg": "Invalid status transition",
+                    "current_status": order.status.value,
+                    "requested_status": status.value
+                }]
+            )
             
         order.status = status
         db.add(order)
         await db.commit()
         await db.refresh(order)
+        return order
+        
+    # PUBLIC_INTERFACE
+    async def remove(self, db: AsyncSession, *, id: int) -> Order:
+        """
+        Remove an order.
+        
+        Args:
+            db: Database session
+            id: Order ID
+            
+        Returns:
+            The removed order
+            
+        Raises:
+            OrderValidationError: If order not found
+        """
+        order = await self.get(db=db, id=id)
+        
+        # Check if the order can be deleted (e.g., not already shipped)
+        if order.status in [OrderStatus.SHIPPED, OrderStatus.DELIVERED]:
+            raise OrderValidationError(
+                detail=f"Cannot delete order with status {order.status.value}",
+                error_type="invalid_order_deletion",
+                validation_errors=[{
+                    "msg": "Cannot delete order that has been shipped or delivered",
+                    "current_status": order.status.value
+                }]
+            )
+            
+        await db.delete(order)
+        await db.commit()
         return order
 
 

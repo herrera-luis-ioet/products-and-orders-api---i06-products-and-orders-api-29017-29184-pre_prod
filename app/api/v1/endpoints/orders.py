@@ -19,6 +19,7 @@ from app.schemas.order import (
 )
 from app.models.order import OrderStatus
 from app.config import settings
+from app.errors import OrderValidationError, ProductValidationError
 
 # Create router for orders endpoints
 router = APIRouter()
@@ -60,13 +61,12 @@ async def get_order(
     Get a specific order by ID.
     
     - **order_id**: The ID of the order to retrieve
+    
+    Raises:
+        OrderValidationError: If order not found
     """
+    # The custom exceptions will be caught by the global exception handlers in app.errors
     order = await order_crud.get_with_items(db, id=order_id)
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Order with ID {order_id} not found"
-        )
     return order
 
 
@@ -80,7 +80,12 @@ async def create_order(
     Create a new order.
     
     - **order_in**: Order data to create, including items
+    
+    Raises:
+        OrderValidationError: If order validation fails
+        ProductValidationError: If product validation fails
     """
+    # The custom exceptions will be caught by the global exception handlers in app.errors
     order = await order_crud.create_with_items(db, obj_in=order_in)
     return order
 
@@ -97,14 +102,12 @@ async def update_order(
     
     - **order_id**: The ID of the order to update
     - **order_in**: Updated order data
-    """
-    order = await order_crud.get(db, id=order_id)
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Order with ID {order_id} not found"
-        )
     
+    Raises:
+        OrderValidationError: If order validation fails
+    """
+    # The custom exceptions will be caught by the global exception handlers in app.errors
+    order = await order_crud.get(db, id=order_id)
     updated_order = await order_crud.update(db, db_obj=order, obj_in=order_in)
     return updated_order
 
@@ -119,14 +122,13 @@ async def delete_order(
     Delete an order.
     
     - **order_id**: The ID of the order to delete
-    """
-    order = await order_crud.get(db, id=order_id)
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Order with ID {order_id} not found"
-        )
     
+    Raises:
+        OrderValidationError: If order validation fails
+    """
+    # The custom exceptions will be caught by the global exception handlers in app.errors
+    # First check if the order exists (will raise OrderValidationError if not)
+    await order_crud.get(db, id=order_id)
     order = await order_crud.remove(db, id=order_id)
     return order
 
@@ -143,14 +145,11 @@ async def update_order_status(
     
     - **order_id**: The ID of the order to update
     - **status**: New status for the order
-    """
-    order = await order_crud.get(db, id=order_id)
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Order with ID {order_id} not found"
-        )
     
+    Raises:
+        OrderValidationError: If order validation fails
+    """
+    # The custom exceptions will be caught by the global exception handlers in app.errors
     updated_order = await order_crud.update_status(db, id=order_id, status=status)
     return updated_order
 
