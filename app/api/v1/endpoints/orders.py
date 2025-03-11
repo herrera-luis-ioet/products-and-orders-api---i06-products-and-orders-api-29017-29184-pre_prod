@@ -162,7 +162,9 @@ async def get_order(
     try:
         # First check if the order exists
         try:
+            print("order_id-----------------------", order_id)
             order = await order_crud.get_with_items(db, id=order_id)
+            print("order_id-----------------------")
         except OrderValidationError as e:
             # If order not found, return 404
             if e.error_type == "order_not_found":
