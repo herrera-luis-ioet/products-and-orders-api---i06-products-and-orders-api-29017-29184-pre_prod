@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import LoadingSpinner from '../components/LoadingSpinner';
+import ErrorMessage from '../components/ErrorMessage';
 import { useProductContext } from '../context/ProductContext';
 
 const ProductDetailPage = () => {
@@ -33,8 +35,8 @@ const ProductDetailPage = () => {
   if (loading) {
     return (
       <Layout>
-        <div className="flex justify-center items-center min-h-screen">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="min-h-screen">
+          <LoadingSpinner size="large" message="Loading product details..." />
         </div>
       </Layout>
     );
@@ -43,16 +45,25 @@ const ProductDetailPage = () => {
   if (error) {
     return (
       <Layout>
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-          <strong className="font-bold">Error!</strong>
-          <span className="block sm:inline"> {error}</span>
+        <div className="p-4">
+          <ErrorMessage 
+            error={{ message: error }}
+            onRetry={() => {
+              setLoading(true);
+              setError(null);
+              getProductById(id)
+                .then(data => setProduct(data))
+                .catch(err => setError(err.message))
+                .finally(() => setLoading(false));
+            }}
+          />
+          <button
+            onClick={handleGoBack}
+            className="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Back to Products
+          </button>
         </div>
-        <button
-          onClick={handleGoBack}
-          className="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-        >
-          Back to Products
-        </button>
       </Layout>
     );
   }

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ProductCard from './ProductCard';
+import LoadingSpinner from './LoadingSpinner';
+import ErrorMessage from './ErrorMessage';
 import { useProductContext } from '../context/ProductContext';
 
 const ProductList = () => {
@@ -73,16 +75,18 @@ const ProductList = () => {
 
       {/* Loading State */}
       {loading && products.length === 0 && (
-        <div className="flex justify-center items-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-        </div>
+        <LoadingSpinner size="large" message="Loading products..." />
       )}
 
       {/* Error State */}
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-          Error: {error}
-        </div>
+        <ErrorMessage 
+          error={{ message: error }} 
+          onRetry={() => {
+            searchProducts(debouncedSearch);
+            filterByCategory(category);
+          }} 
+        />
       )}
 
       {/* Empty State */}
@@ -114,9 +118,7 @@ const ProductList = () => {
 
       {/* Loading More Indicator */}
       {loading && products.length > 0 && (
-        <div className="flex justify-center mt-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-        </div>
+        <LoadingSpinner size="medium" message="Loading more products..." />
       )}
     </div>
   );
