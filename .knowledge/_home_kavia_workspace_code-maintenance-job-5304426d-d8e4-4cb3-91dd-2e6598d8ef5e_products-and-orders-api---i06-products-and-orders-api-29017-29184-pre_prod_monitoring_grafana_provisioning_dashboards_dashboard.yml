@@ -1,0 +1,30 @@
+{
+  "is_source_file": true,
+  "format": "YAML",
+  "description": "Grafana dashboard provisioning configuration for the Products and Orders API.",
+  "external_files": [],
+  "external_methods": [],
+  "published": [],
+  "classes": [],
+  "methods": [],
+  "calls": [],
+  "search-terms": [
+    "Grafana",
+    "dashboard",
+    "provisioning",
+    "Products and Orders API"
+  ],
+  "state": 2,
+  "file_id": 42,
+  "knowledge_revision": 212,
+  "git_revision": "b436a95daea430bb64bfe449e30952d32df443aa",
+  "filename": "/home/kavia/workspace/code-maintenance-job-5304426d-d8e4-4cb3-91dd-2e6598d8ef5e/products-and-orders-api---i06-products-and-orders-api-29017-29184-pre_prod/monitoring/grafana/provisioning/dashboards/dashboard.yml",
+  "hash": "e821b9a1ee486201628deb90402fe226",
+  "format-version": 4,
+  "code-base-name": "b9046lt",
+  "revision_history": [
+    {
+      "212": "b436a95daea430bb64bfe449e30952d32df443aa"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "is_source_file": true,
+  "format": "TOML",
+  "description": "This file is a configuration file for a Python project using Poetry for dependency management and packaging. It contains metadata about the project, dependencies, development dependencies, and configuration for tools like Black, MyPy, and Pytest.",
+  "external_files": [],
+  "external_methods": [],
+  "published": [],
+  "classes": [],
+  "methods": [],
+  "calls": [],
+  "search-terms": [
+    "products-and-orders-api",
+    "FastAPI",
+    "SQLAlchemy",
+    "Poetry"
+  ],
+  "state": 2,
+  "file_id": 40,
+  "knowledge_revision": 214,
+  "git_revision": "41585d0533b55839d678a8be8c2b4dfe1222d058",
+  "filename": "/home/kavia/workspace/code-maintenance-job-5304426d-d8e4-4cb3-91dd-2e6598d8ef5e/products-and-orders-api---i06-products-and-orders-api-29017-29184-pre_prod/pyproject.toml",
+  "hash": "8e17c622eaf6e5f1d5d41480d5901be3",
+  "format-version": 4,
+  "code-base-name": "b9046lt",
+  "revision_history": [
+    {
+      "214": "41585d0533b55839d678a8be8c2b4dfe1222d058"
+    }
+  ]
+}

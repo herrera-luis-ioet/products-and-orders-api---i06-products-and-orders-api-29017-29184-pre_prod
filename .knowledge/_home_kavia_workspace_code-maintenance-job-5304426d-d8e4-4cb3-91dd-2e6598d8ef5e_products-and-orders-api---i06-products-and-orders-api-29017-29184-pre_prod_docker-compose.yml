@@ -1,0 +1,31 @@
+{
+  "is_source_file": true,
+  "format": "YAML",
+  "description": "Docker Compose configuration file for setting up a development environment with an API service, and monitoring services using Prometheus and Grafana.",
+  "external_files": [],
+  "external_methods": [],
+  "published": [],
+  "classes": [],
+  "methods": [],
+  "calls": [],
+  "search-terms": [
+    "docker",
+    "compose",
+    "api",
+    "prometheus",
+    "grafana"
+  ],
+  "state": 2,
+  "file_id": 75,
+  "knowledge_revision": 243,
+  "git_revision": "b436a95daea430bb64bfe449e30952d32df443aa",
+  "filename": "/home/kavia/workspace/code-maintenance-job-5304426d-d8e4-4cb3-91dd-2e6598d8ef5e/products-and-orders-api---i06-products-and-orders-api-29017-29184-pre_prod/docker-compose.yml",
+  "hash": "e57fd36a8df7a5e6bc99c3b9a8f90e42",
+  "format-version": 4,
+  "code-base-name": "b9046lt",
+  "revision_history": [
+    {
+      "243": "b436a95daea430bb64bfe449e30952d32df443aa"
+    }
+  ]
+}

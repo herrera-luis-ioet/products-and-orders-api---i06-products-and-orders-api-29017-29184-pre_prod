@@ -1,0 +1,30 @@
+{
+  "is_source_file": true,
+  "format": "YAML",
+  "description": "Configuration file for Grafana datasource setup, specifically for Prometheus.",
+  "external_files": [],
+  "external_methods": [],
+  "published": [],
+  "classes": [],
+  "methods": [],
+  "calls": [],
+  "search-terms": [
+    "Grafana",
+    "Prometheus",
+    "datasource",
+    "configuration"
+  ],
+  "state": 2,
+  "file_id": 41,
+  "knowledge_revision": 213,
+  "git_revision": "b436a95daea430bb64bfe449e30952d32df443aa",
+  "filename": "/home/kavia/workspace/code-maintenance-job-5304426d-d8e4-4cb3-91dd-2e6598d8ef5e/products-and-orders-api---i06-products-and-orders-api-29017-29184-pre_prod/monitoring/grafana/provisioning/datasources/datasource.yml",
+  "hash": "9975ff0009f64fdf1f4351419345eaba",
+  "format-version": 4,
+  "code-base-name": "b9046lt",
+  "revision_history": [
+    {
+      "213": "b436a95daea430bb64bfe449e30952d32df443aa"
+    }
+  ]
+}
