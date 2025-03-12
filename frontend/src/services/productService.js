@@ -1,8 +1,17 @@
 import api from './api';
 
 const productService = {
-  async getAllProducts() {
-    const response = await api.get('/api/v1/products');
+  async getAllProducts({ page = 1, limit = 10, category = null, search = null } = {}) {
+    const skip = (page - 1) * limit;
+    let url = `/api/v1/products?skip=${skip}&limit=${limit}`;
+
+    if (search) {
+      url = `/api/v1/products/search/?query=${encodeURIComponent(search)}&skip=${skip}&limit=${limit}`;
+    } else if (category) {
+      url = `/api/v1/products/category/${encodeURIComponent(category)}?skip=${skip}&limit=${limit}`;
+    }
+
+    const response = await api.get(url);
     return response.data;
   },
 
