@@ -1,32 +1,24 @@
-# Product and Order Management Component
+# Products and Orders API with React Frontend
 
-A comprehensive API for managing products and orders using FastAPI, SQLAlchemy, and SQLite.
+This project consists of a FastAPI backend service for managing products and orders, along with a React frontend for user interaction and a monitoring stack using Prometheus and Grafana.
 
-## Project Overview
+## Architecture
 
-This component provides a RESTful API for managing products and orders in an e-commerce system. It allows for:
+The application is composed of several services:
 
-- Product management (CRUD operations)
-- Order processing and management
-- Inventory tracking
-- Basic reporting and analytics
+- **Frontend**: React application served by Nginx (Port 3001)
+- **Backend API**: FastAPI application (Port 8000)
+- **Monitoring**:
+  - Prometheus (Port 9090)
+  - Grafana (Port 3000)
 
-### Core Technologies
+## Prerequisites
 
-- **Backend**: Python 3.9+, FastAPI v0.115
-- **Database**: SQLite 3 with SQLAlchemy ORM
-- **Validation**: Pydantic
-- **Documentation**: Swagger/OpenAPI
-- **Testing**: pytest
+- Docker
+- Docker Compose
+- Git
 
-## Installation
-
-### Prerequisites
-
-- Python 3.9 or higher
-- Poetry (Python package manager)
-
-### Setup
+## Quick Start
 
 1. Clone the repository:
    ```bash
@@ -34,140 +26,107 @@ This component provides a RESTful API for managing products and orders in an e-c
    cd products-and-orders-api
    ```
 
-2. Install dependencies using Poetry:
+2. Start the services:
    ```bash
-   poetry install
+   docker-compose up --build
    ```
 
-3. Activate the virtual environment:
-   ```bash
-   poetry shell
-   ```
+3. Access the services:
+   - Frontend: http://localhost:3001
+   - API Documentation: http://localhost:8000/docs
+   - Grafana: http://localhost:3000 (admin/admin)
+   - Prometheus: http://localhost:9090
 
-4. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
+## Development Setup
 
-5. Initialize the database:
-   ```bash
-   alembic upgrade head
-   ```
+### Backend (FastAPI)
 
-## Usage
+The backend service is built with FastAPI and uses SQLite for data storage.
 
-### Starting the API Server
+Environment variables:
+- `ENV`: development/production
+- `DEBUG`: true/false
+- `DATABASE_URL`: SQLite connection string
+- `SECRET_KEY`: Secret key for security
+- `BACKEND_CORS_ORIGINS`: List of allowed origins
 
-```bash
-uvicorn app.main:app --reload
+### Frontend (React)
+
+The frontend is built with React and uses Vite as the build tool.
+
+Environment variables:
+- `NODE_ENV`: development/production
+- `VITE_API_URL`: Backend API URL
+
+### Monitoring
+
+The monitoring stack includes:
+
+- **Prometheus**: Metrics collection and storage
+- **Grafana**: Metrics visualization and alerting
+
+Default Grafana credentials:
+- Username: admin
+- Password: admin
+
+## API Endpoints
+
+### Products
+
+- `GET /api/v1/products`: List all products
+- `GET /api/v1/products/{id}`: Get product details
+- `POST /api/v1/products`: Create a new product
+- `PUT /api/v1/products/{id}`: Update a product
+- `DELETE /api/v1/products/{id}`: Delete a product
+
+### Orders
+
+- `GET /api/v1/orders`: List all orders
+- `GET /api/v1/orders/{id}`: Get order details
+- `POST /api/v1/orders`: Create a new order
+- `PUT /api/v1/orders/{id}`: Update an order
+- `DELETE /api/v1/orders/{id}`: Delete an order
+
+## Directory Structure
+
 ```
-
-The API will be available at http://localhost:8000
-
-### API Documentation
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- OpenAPI JSON: http://localhost:8000/openapi.json
-
-## Development
-
-### Project Structure
-
-```
-app/
-├── api/              # API routes
-├── core/             # Core functionality, config
-├── crud/             # CRUD operations
-├── db/               # Database models and session
-├── models/           # SQLAlchemy models
-├── schemas/          # Pydantic schemas
-└── services/         # Business logic
-tests/                # Test suite
-alembic/              # Database migrations
-```
-
-### Code Style
-
-This project uses:
-- Black for code formatting
-- Flake8 for linting
-- isort for import sorting
-- mypy for type checking
-
-Run the formatters:
-```bash
-black .
-isort .
-```
-
-Run the linters:
-```bash
-flake8
-mypy .
-```
-
-### Pre-commit Hooks
-
-Install pre-commit hooks:
-```bash
-pre-commit install
+.
+├── app/                    # Backend application
+│   ├── api/               # API endpoints
+│   ├── crud/              # Database operations
+│   ├── models/            # Database models
+│   └── schemas/           # Pydantic schemas
+├── frontend/              # Frontend application
+│   ├── src/              # Source code
+│   └── nginx.conf        # Nginx configuration
+├── monitoring/           # Monitoring configuration
+│   ├── grafana/         # Grafana configuration
+│   └── prometheus/      # Prometheus configuration
+├── tests/               # Test suite
+├── docker-compose.yml   # Docker services configuration
+└── README.md           # This file
 ```
 
 ## Testing
 
 Run the test suite:
-```bash
-pytest
-```
-
-Run with coverage:
-```bash
-pytest --cov=app
-```
-
-## Deployment
-
-### Docker
-
-Build the Docker image:
-```bash
-docker build -t products-and-orders-api .
-```
-
-Run the container:
-```bash
-docker run -p 8000:8000 products-and-orders-api
-```
-
-### Docker Compose
-
-For local development with monitoring tools:
 
 ```bash
-docker-compose up -d
+# Backend tests
+docker-compose exec api pytest
+
+# Frontend tests
+docker-compose exec frontend npm test
 ```
-
-This will start:
-- The API service with hot-reload enabled
-- Prometheus for metrics collection
-- Grafana for metrics visualization (available at http://localhost:3000)
-
-### CI/CD Pipeline
-
-This project uses GitHub Actions for continuous integration and delivery:
-
-- **Linting**: Runs Black, isort, Flake8, and MyPy
-- **Testing**: Runs pytest with coverage reporting
-- **Building**: Builds and pushes Docker image on successful merge to main branch or when tags are pushed
-
-The workflow is defined in `.github/workflows/ci.yml`.
-
-## License
-
-[Specify your license here]
 
 ## Contributing
 
-[Contribution guidelines]
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+[Add your license information here]
